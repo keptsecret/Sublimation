@@ -37,18 +37,28 @@ set_property (TARGET glfw PROPERTY FOLDER "external")
 ###########################################################################
 # spirv-cross
 
-set (SPVCROSS_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Cross/include PARENT_SCOPE)
+set (SPIRV_CROSS_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/SPIRV-Cross/include PARENT_SCOPE)
 
 set (SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set (SPIRV_CROSS_SKIP_INSTALL OFF CACHE BOOL "" FORCE)
 set (SPIRV_CROSS_STATIC ON CACHE BOOL "" FORCE)
 set (SPIRV_CROSS_CLI OFF CACHE BOOL "" FORCE)
 
 add_subdirectory (spirv-cross)
 
-###########################################################################
-# vma
+set_property (TARGET spirv-cross-core PROPERTY FOLDER "external")
 
-set (VMA_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/vma/include PARENT_SCOPE)
+###########################################################################
+# volk
+
+set (VOLK_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/volk PARENT_SCOPE)
+
+if (WIN32)
+   set (VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
+endif()
+add_subdirectory (volk)
+
+set_property (TARGET volk PROPERTY FOLDER "external")
 
 ###########################################################################
 # glm

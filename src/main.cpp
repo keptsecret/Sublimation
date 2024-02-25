@@ -1,6 +1,6 @@
-#include <iostream>
+#include <core/engine.h>
 
 int main() {
-    std::cout << "Hello, World!" << std::endl;
+    sublimation::Engine* engine = sublimation::Engine::getSingleton();
     return 0;
 }

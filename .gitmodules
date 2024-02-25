@@ -13,3 +13,6 @@
 [submodule "src/external/SPIRV-Cross"]
 	path = src/external/SPIRV-Cross
 	url = https://github.com/KhronosGroup/SPIRV-Cross.git
+[submodule "src/external/volk"]
+	path = src/external/volk
+	url = https://github.com/zeux/volk.git
