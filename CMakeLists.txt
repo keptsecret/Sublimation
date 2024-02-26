@@ -106,10 +106,22 @@ set(SUBLIMATION_CORE_SOURCE
         )
 
 set(SUBLIMATION_GRAPHICS_HEADERS
-        )
+        src/graphics/vulkan/rendering_device.h
+        src/graphics/vulkan/vulkan_context.h
+        src/graphics/vulkan/swapchain.h
+        src/graphics/vulkan/render_target.h
+        src/graphics/vulkan/buffer.h
+        src/graphics/vulkan/texture.h
+        src/graphics/vulkan/utils.h)
 
 set(SUBLIMATION_GRAPHICS_SOURCE
-        )
+        src/graphics/vulkan/rendering_device.cpp
+        src/graphics/vulkan/vulkan_context.cpp
+        src/graphics/vulkan/swapchain.cpp
+        src/graphics/vulkan/render_target.cpp
+        src/graphics/vulkan/buffer.cpp
+        src/graphics/vulkan/texture.cpp
+        src/graphics/vulkan/utils.cpp)
 
 set(SUBLIMATION_SCENE_HEADERS
         )
@@ -132,6 +144,7 @@ target_include_directories(sublimation_lib PUBLIC
         ${ASSIMP_INCLUDE}
         ${Vulkan_INCLUDE_DIRS}
         ${VOLK_INCLUDE}
+        ${VMA_INCLUDE}
         ${SPIRV_CROSS_INCLUDE}
         ${GLFW_INCLUDE}
         ${GLM_INCLUDE}
