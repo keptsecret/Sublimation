@@ -16,3 +16,6 @@
 [submodule "src/external/volk"]
 	path = src/external/volk
 	url = https://github.com/zeux/volk.git
+[submodule "src/external/vma"]
+	path = src/external/vma
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git

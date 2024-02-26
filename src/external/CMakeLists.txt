@@ -61,6 +61,11 @@ add_subdirectory (volk)
 set_property (TARGET volk PROPERTY FOLDER "external")
 
 ###########################################################################
+# vma
+
+set (VMA_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/vma/include PARENT_SCOPE)
+
+###########################################################################
 # glm
 
 set (GLM_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/glm PARENT_SCOPE)
