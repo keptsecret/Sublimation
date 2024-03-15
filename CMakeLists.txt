@@ -110,6 +110,8 @@ set(SUBLIMATION_GRAPHICS_HEADERS
         src/graphics/vulkan/vulkan_context.h
         src/graphics/vulkan/swapchain.h
         src/graphics/vulkan/render_target.h
+        src/graphics/vulkan/descriptor.h
+        src/graphics/vulkan/command_buffer.h
         src/graphics/vulkan/buffer.h
         src/graphics/vulkan/texture.h
         src/graphics/vulkan/utils.h)
@@ -119,6 +121,8 @@ set(SUBLIMATION_GRAPHICS_SOURCE
         src/graphics/vulkan/vulkan_context.cpp
         src/graphics/vulkan/swapchain.cpp
         src/graphics/vulkan/render_target.cpp
+        src/graphics/vulkan/descriptor.cpp
+        src/graphics/vulkan/command_buffer.cpp
         src/graphics/vulkan/buffer.cpp
         src/graphics/vulkan/texture.cpp
         src/graphics/vulkan/utils.cpp)

@@ -11,6 +11,22 @@ namespace sublimation {
 
 namespace vkw {
 
+typedef enum TextureType {
+    TEXTURE_2D = 0,
+    TEXTURE_DEPTH = 1
+} TextureType;
+
+struct TextureInfo {
+    VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+    VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    VkFilter filter = VK_FILTER_LINEAR;
+    VkSamplerAddressMode addressMode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+    bool aniso = false;
+    bool mipmap = false;
+};
+
 class Texture {
 public:
     ~Texture();
