@@ -109,6 +109,7 @@ set(SUBLIMATION_GRAPHICS_HEADERS
         src/graphics/vulkan/rendering_device.h
         src/graphics/vulkan/vulkan_context.h
         src/graphics/vulkan/swapchain.h
+        src/graphics/vulkan/pipeline.h
         src/graphics/vulkan/render_target.h
         src/graphics/vulkan/descriptor.h
         src/graphics/vulkan/command_buffer.h

@@ -38,11 +38,11 @@ private:
 
 class DescriptorBuilder {
 public:
-    explicit DescriptorBuilder();
+    explicit DescriptorBuilder() = default;
     DescriptorBuilder(DescriptorBuilder&& other) = delete;
     DescriptorBuilder(const DescriptorBuilder& other) = delete;
 
-    ~DescriptorBuilder()= default;
+    ~DescriptorBuilder() = default;
 
     template <typename T>
     DescriptorBuilder& addUniformBuffer(UniformBuffer& buffer, const uint32_t binding, const VkShaderStageFlagBits stage);
