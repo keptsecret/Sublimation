@@ -106,6 +106,8 @@ set(SUBLIMATION_CORE_SOURCE
         )
 
 set(SUBLIMATION_GRAPHICS_HEADERS
+        src/graphics/render_system.h
+
         src/graphics/vulkan/rendering_device.h
         src/graphics/vulkan/vulkan_context.h
         src/graphics/vulkan/swapchain.h
@@ -118,6 +120,8 @@ set(SUBLIMATION_GRAPHICS_HEADERS
         src/graphics/vulkan/utils.h)
 
 set(SUBLIMATION_GRAPHICS_SOURCE
+        src/graphics/render_system.cpp
+
         src/graphics/vulkan/rendering_device.cpp
         src/graphics/vulkan/vulkan_context.cpp
         src/graphics/vulkan/swapchain.cpp
@@ -129,9 +133,19 @@ set(SUBLIMATION_GRAPHICS_SOURCE
         src/graphics/vulkan/utils.cpp)
 
 set(SUBLIMATION_SCENE_HEADERS
+        src/scene/scene.h
+        src/scene/material.h
+        src/scene/model.h
+        src/scene/camera.h
+        src/scene/light.h
         )
 
 set(SUBLIMATION_SCENE_SOURCE
+        src/scene/scene.cpp
+        src/scene/material.cpp
+        src/scene/model.cpp
+        src/scene/camera.cpp
+        src/scene/light.cpp
         )
 
 add_library(sublimation_lib STATIC
