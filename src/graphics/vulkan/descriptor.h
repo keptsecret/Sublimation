@@ -2,6 +2,8 @@
 
 #include <string>
 #include <vector>
+#include <span>
+#include <deque>
 #include <volk.h>
 
 #include <graphics/vulkan/buffer.h>
@@ -11,53 +13,54 @@ namespace sublimation {
 
 namespace vkw {
 
-class Descriptor {
+class DescriptorLayoutBuilder {
 public:
-    Descriptor(std::string&& name, std::vector<VkDescriptorSetLayoutBinding>&& layoutBindings, std::vector<VkWriteDescriptorSet>&& writeSets);
-    Descriptor(Descriptor&& other) noexcept;
-    Descriptor(const Descriptor& other) = delete;
+    explicit DescriptorLayoutBuilder() = default;
+    DescriptorLayoutBuilder(DescriptorLayoutBuilder&& other) = delete;
+    DescriptorLayoutBuilder(const DescriptorLayoutBuilder& other) = delete;
 
-    ~Descriptor();
+    ~DescriptorLayoutBuilder() = default;
 
-    const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
-    const VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
-    const std::vector<VkDescriptorSetLayoutBinding>& getDescriptorSetLayoutBindings() const { return descriptorLayoutBindings; }
+    DescriptorLayoutBuilder& addResource(VkDescriptorType type, const uint32_t binding, const VkShaderStageFlagBits stage);
 
-private:
-    std::string name;
-
-    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-
-    // temporary?
-    std::vector<VkDescriptorSetLayoutBinding> descriptorLayoutBindings;
-    std::vector<VkWriteDescriptorSet> writeDescriptorSets;
-
-    std::vector<VkDescriptorSet> descriptorSets;
-};
-
-class DescriptorBuilder {
-public:
-    explicit DescriptorBuilder() = default;
-    DescriptorBuilder(DescriptorBuilder&& other) = delete;
-    DescriptorBuilder(const DescriptorBuilder& other) = delete;
-
-    ~DescriptorBuilder() = default;
-
-    template <typename T>
-    DescriptorBuilder& addUniformBuffer(UniformBuffer& buffer, const uint32_t binding, const VkShaderStageFlagBits stage);
-    template <typename T>
-    DescriptorBuilder& addStorageBuffer(StorageBuffer& buffer, const uint32_t binding, const VkShaderStageFlagBits stage);
-    template <typename T>
-    DescriptorBuilder& addCombinedImageSampler(Texture& buffer, const uint32_t binding, const VkShaderStageFlagBits stage);
-
-    [[nodiscard]] Descriptor build(std::string name);
+    [[nodiscard]] VkDescriptorSetLayout build(std::string name);
 
 private:
     std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
-    std::vector<VkWriteDescriptorSet> writeDescriptorSets;
-    std::vector<VkDescriptorBufferInfo> descriptorBufferInfos;
-    std::vector<VkDescriptorImageInfo> descriptorImageInfos;
+};
+
+class DescriptorAllocator {
+public:
+    struct PoolSizeRatio {
+        VkDescriptorType type;
+        float ratio;
+    };
+
+    void initialize(uint32_t initialSets, std::span<PoolSizeRatio> poolRatios);
+    void clearPools();
+    void destroyPools();
+
+    VkDescriptorSet allocate(VkDescriptorSetLayout layout, void* pNext = nullptr);
+
+private:
+    VkDescriptorPool getPool();
+	VkDescriptorPool createPool(uint32_t setCount, std::span<PoolSizeRatio> poolRatios);
+
+	std::vector<PoolSizeRatio> ratios;
+	std::vector<VkDescriptorPool> fullPools;
+	std::vector<VkDescriptorPool> readyPools;
+	uint32_t setsPerPool;
+};
+
+struct DescriptorWriter {
+    std::deque<VkDescriptorImageInfo> imageInfos;
+    std::deque<VkDescriptorBufferInfo> bufferInfos;
+    std::vector<VkWriteDescriptorSet> descriptorWrites;
+
+    void bindImage(uint32_t binding, Texture* texture, VkDescriptorType type);
+    void bindBuffer(uint32_t binding, Buffer* buffer, VkDescriptorType type);
+
+    void writeSet(VkDescriptorSet descriptorSet);
 };
 
 } //namespace vkw

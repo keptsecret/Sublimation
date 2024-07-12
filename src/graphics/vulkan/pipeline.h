@@ -44,7 +44,7 @@ struct Shader {
     bool isGraphicsPipeline = true;
 
     // move into reflection results
-    //vector of Descriptor descriptors
+    std::vector<VkDescriptorSetLayout> layouts;
     uint32_t pushConstantRange = 0;
 };
 
@@ -65,7 +65,24 @@ struct PipelineInfo {
     DepthStencilInfo depthStencilInfo;
     BlendStateInfo blendStateInfo;
 
-    ShaderStageInfo shaders;
+    VkPipelineLayout pipelineLayout;
+    VkRenderPass renderPass;
+};
+
+struct RenderPass {
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+    std::string name;
+};
+
+struct Pipeline {
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    RenderPass renderPass;
+    Shader shader;
+
+    std::vector<VkDescriptorSet> descriptors;
+
+    virtual void setupRenderPass() {}
 };
 
 } //namespace vkw

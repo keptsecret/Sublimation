@@ -2,11 +2,14 @@
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
-#include <graphics/vulkan/utils.h>
+#include "render_target.h"
 
 #include <graphics/vulkan/buffer.h>
-#include <graphics/vulkan/texture.h>
 #include <graphics/vulkan/descriptor.h>
+#include <graphics/vulkan/texture.h>
+#include <graphics/vulkan/utils.h>
+
+#include <scene/model.h>
 
 namespace sublimation {
 
@@ -27,8 +30,16 @@ void RenderingDevice::initialize() {
 
     commandBufferManager.initialize();
 
+    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 8 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64 }
+    };
+    descriptorAllocator.initialize(10, sizes);
+
     // initialize resource pools
     pipelines.reserve(128);
+    pipelineLayouts.reserve(128);
     renderPasses.reserve(256);
     bufferObjects.reserve(4096);
     textureObjects.reserve(512);
@@ -44,6 +55,46 @@ uint32_t RenderingDevice::getMemoryType(uint32_t typeFilter, VkMemoryPropertyFla
     }
 
     throw std::runtime_error("ERROR::RenderingDevice:getMemoryType: failed to find suitable memory type!");
+}
+
+RenderPass RenderingDevice::createRenderPass(const RenderTarget& target, const VkSubpassDependency& dependency, const std::string& name) {
+    VkSubpassDescription subpass{
+        .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .colorAttachmentCount = target.getNumColorAttachments(),
+        .pColorAttachments = target.getNumColorAttachments() ? target.getColorAttachmentReferences() : nullptr,
+        .pResolveAttachments = target.getResolveAttachmentReferences(),
+        .pDepthStencilAttachment = target.getDepthStencilReference()
+    };
+
+    VkRenderPassCreateInfo renderPassCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .attachmentCount = target.getNumAttachmentDescriptions(),
+        .pAttachments = target.getAttachmentDescriptions(),
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+        .dependencyCount = 1,
+        .pDependencies = &dependency
+    };
+
+    VkRenderPass renderPass;
+    CHECK_VKRESULT(vkCreateRenderPass(vulkanContext.device, &renderPassCreateInfo, nullptr, &renderPass));
+
+    renderPasses.push_back({ renderPass, name });
+    return renderPasses.back();
+}
+
+bool RenderingDevice::destroyRenderPass(const std::string& name) {
+    uint32_t i;
+    for (i = 0; i < renderPasses.size(); i++) {
+        if (renderPasses[i].name == name) {
+            vkDestroyRenderPass(vulkanContext.device, renderPasses[i].renderPass, nullptr);
+            break;
+        }
+    }
+
+    renderPasses.erase(renderPasses.begin() + i);
+
+    return i < renderPasses.size();
 }
 
 VkCommandBuffer RenderingDevice::getCommandBuffer(int frameIdx) {
@@ -75,23 +126,14 @@ void RenderingDevice::commandBufferSubmitIdle(VkCommandBuffer* buffer, VkQueueFl
 
     CHECK_VKRESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
     vkQueueWaitIdle(queue);
-
-    vkFreeCommandBuffers(vulkanContext.device, commandPool, 1, buffer);
 }
 
-VkPipeline RenderingDevice::createPipeline(const PipelineInfo& pipelineInfo, const std::vector<Descriptor>& descriptors) {
-    Shader shader = createShaderFromSPIRV(pipelineInfo.shaders);
-
+VkPipelineLayout RenderingDevice::createPipelineLayout(const Shader& shader) {
     // TODO: set up shader reflection and get descriptor layouts from shader
-    std::vector<VkDescriptorSetLayout> layouts(descriptors.size());
-    for (size_t i = 0; i < descriptors.size(); i++) {
-        layouts[i] = descriptors[i].getDescriptorSetLayout();
-    }
-
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{ ///< good idea to separate this out
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = static_cast<uint32_t>(layouts.size()),
-        .pSetLayouts = layouts.data()
+        .setLayoutCount = static_cast<uint32_t>(shader.layouts.size()),
+        .pSetLayouts = shader.layouts.data()
     };
 
     VkPushConstantRange pushConstants;
@@ -104,7 +146,15 @@ VkPipeline RenderingDevice::createPipeline(const PipelineInfo& pipelineInfo, con
         pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstants;
     }
 
+    VkPipelineLayout pipelineLayout;
     CHECK_VKRESULT(vkCreatePipelineLayout(vulkanContext.device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
+
+    pipelineLayouts.push_back(pipelineLayout);
+    return pipelineLayout;
+}
+
+VkPipeline RenderingDevice::createPipeline(const PipelineInfo& pipelineInfo, const Shader& shader) {
+    //Shader shader = createShaderFromSPIRV(pipelineInfo.shaders);
 
     VkPipeline pipeline;
 
@@ -168,10 +218,10 @@ VkPipeline RenderingDevice::createPipeline(const PipelineInfo& pipelineInfo, con
             .depthCompareOp = pipelineInfo.depthStencilInfo.compareOp,
             .depthBoundsTestEnable = VK_FALSE,
             .stencilTestEnable = pipelineInfo.depthStencilInfo.stencilEnable,
-            .minDepthBounds = 0.f,
-            .maxDepthBounds = 1.f,
             .front = pipelineInfo.depthStencilInfo.front,
-            .back = pipelineInfo.depthStencilInfo.back
+            .back = pipelineInfo.depthStencilInfo.back,
+            .minDepthBounds = 0.f,
+            .maxDepthBounds = 1.f
         };
 
         VkPipelineColorBlendStateCreateInfo colorBlendState{
@@ -193,8 +243,8 @@ VkPipeline RenderingDevice::createPipeline(const PipelineInfo& pipelineInfo, con
             .pDepthStencilState = &depthStencilState,
             .pColorBlendState = &colorBlendState,
             .pDynamicState = &dynamicState,
-            .layout = pipelineLayout,
-            .renderPass = renderPass,
+            .layout = pipelineInfo.pipelineLayout,
+            .renderPass = pipelineInfo.renderPass,
             .subpass = 0,
             .basePipelineHandle = VK_NULL_HANDLE,
             .basePipelineIndex = -1
@@ -205,7 +255,7 @@ VkPipeline RenderingDevice::createPipeline(const PipelineInfo& pipelineInfo, con
         VkComputePipelineCreateInfo pipelineCreateInfo{
             .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
             .stage = shader.shaderStageCreateInfo[0],
-            .layout = pipelineLayout
+            .layout = pipelineInfo.pipelineLayout
         };
 
         CHECK_VKRESULT(vkCreateComputePipelines(vulkanContext.device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &pipeline));
@@ -216,40 +266,40 @@ VkPipeline RenderingDevice::createPipeline(const PipelineInfo& pipelineInfo, con
     return pipeline;
 }
 
-std::weak_ptr<Buffer> RenderingDevice::createBuffer(VkBufferUsageFlags usageFlags, VmaMemoryUsage properties, VkDeviceSize size, const void* data) {
-    std::shared_ptr<Buffer> newBuffer = nullptr;
+Buffer* RenderingDevice::createBuffer(VkBufferUsageFlags usageFlags, VmaMemoryUsage properties, VkDeviceSize size, const void* data) {
+    std::unique_ptr<Buffer> newBuffer = nullptr;
 
     // check usage flags and create appropriate buffers
     if (usageFlags & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) {
-        newBuffer = std::make_shared<UniformBuffer>(size, data);
+        newBuffer = std::make_unique<UniformBuffer>(size, data);
     } else if (usageFlags & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
-        newBuffer = std::make_shared<StorageBuffer>(size, data);
+        newBuffer = std::make_unique<StorageBuffer>(size, data);
     } else {
-        newBuffer = std::make_shared<Buffer>(size, usageFlags, properties, data);
+        newBuffer = std::make_unique<Buffer>(size, usageFlags, properties, data);
     }
 
-    bufferObjects.push_back(newBuffer);
-    return std::weak_ptr<Buffer>(newBuffer);
+    bufferObjects.push_back(std::move(newBuffer));
+    return newBuffer.get();
 }
 
-std::weak_ptr<Texture> RenderingDevice::createTexture(TextureType type, const glm::ivec2& extent, TextureInfo texInfo) {
-    std::shared_ptr<Texture> newTexture = nullptr;
+Texture* RenderingDevice::createTexture(TextureType type, const glm::ivec2& extent, TextureInfo texInfo, VkDeviceSize size, const void* data) {
+    std::unique_ptr<Texture> newTexture = nullptr;
 
     if (type == TEXTURE_DEPTH) {
-        newTexture = std::make_shared<TextureDepth>(extent, texInfo.samples);
+        newTexture = std::make_unique<TextureDepth>(extent, texInfo.samples);
     } else { // default to 2D texture
-        newTexture = std::make_shared<Texture2D>(extent, nullptr, 0, texInfo.format, texInfo.layout, texInfo.usage, texInfo.filter,
+        newTexture = std::make_unique<Texture2D>(extent, data, size, texInfo.format, texInfo.layout, texInfo.usage, texInfo.filter,
                 texInfo.addressMode, texInfo.samples, texInfo.aniso, texInfo.mipmap);
     }
 
-    textureObjects.push_back(newTexture);
-    return { newTexture };
+    textureObjects.push_back(std::move(newTexture));
+    return newTexture.get();
 }
 
-std::weak_ptr<Texture> RenderingDevice::loadTextureFromFile(const std::string& filename, VkFilter filter, VkSamplerAddressMode addressMode, bool aniso, bool mipmap) {
-    textureObjects.push_back(std::make_shared<Texture2D>(filename, filter, addressMode, aniso, mipmap));
+Texture* RenderingDevice::loadTextureFromFile(const std::string& filename, VkFilter filter, VkSamplerAddressMode addressMode, bool aniso, bool mipmap) {
+    textureObjects.push_back(std::make_unique<Texture2D>(filename, filter, addressMode, aniso, mipmap));
 
-    return { textureObjects.back() };
+    return textureObjects.back().get();
 }
 
 Shader RenderingDevice::createShaderFromSPIRV(const ShaderStageInfo& shaderInfo) {
@@ -290,20 +340,17 @@ RenderingDevice::~RenderingDevice() {
     vkDeviceWaitIdle(vulkanContext.device);
 
     //cleanupRenderArea();
-
-    vkDestroyDescriptorPool(vulkanContext.device, descriptorPool, nullptr);
-    for (size_t i = 0; i < descriptorSetLayouts.size(); i++) {
-        vkDestroyDescriptorSetLayout(vulkanContext.device, descriptorSetLayouts[i], nullptr);
+    for (const auto pass : renderPasses) {
+        vkDestroyRenderPass(vulkanContext.device, pass.renderPass, nullptr);
     }
-    vkDestroyDescriptorSetLayout(vulkanContext.device, depthPassDescriptorSetLayout, nullptr);
 
-    for (size_t i = 0; i < maxFrameLag; i++) {
-        vkDestroySemaphore(vulkanContext.device, presentCompleteSemaphores[i], nullptr);
-        vkDestroySemaphore(vulkanContext.device, renderCompleteSemaphores[i], nullptr);
-        vkDestroySemaphore(vulkanContext.device, depthPrePassCompleteSemaphores[i], nullptr);
-        vkDestroyFence(vulkanContext.device, inFlightFences[i], nullptr);
-        vkDestroyFence(vulkanContext.device, depthPassFences[i], nullptr);
-    }
+    //vkDestroyDescriptorPool(vulkanContext.device, descriptorPool, nullptr);
+    //for (size_t i = 0; i < descriptorSetLayouts.size(); i++) {
+    //    vkDestroyDescriptorSetLayout(vulkanContext.device, descriptorSetLayouts[i], nullptr);
+    //}
+    //vkDestroyDescriptorSetLayout(vulkanContext.device, depthPassDescriptorSetLayout, nullptr);
+    descriptorAllocator.clearPools();
+    descriptorAllocator.destroyPools();
 
     for (const auto& shader : shaders) {
         for (size_t i = 0; i < shader.activeShaders; i++) {
@@ -318,11 +365,12 @@ RenderingDevice::~RenderingDevice() {
 
     //vkDestroyCommandPool(vulkanContext.device, commandPool, nullptr);
     commandBufferManager.destroy();
-    vkDestroyPipeline(vulkanContext.device, renderPipeline, nullptr);
-    vkDestroyPipelineLayout(vulkanContext.device, pipelineLayout, nullptr);
 
-    vkDestroyPipeline(vulkanContext.device, depthPipeline, nullptr);
-    vkDestroyPipelineLayout(vulkanContext.device, depthPipelineLayout, nullptr);
+    ///< should have same number of pipeline and pipeline layouts (at this point)
+    for (size_t i = 0; i < pipelines.size(); i++) {
+        vkDestroyPipeline(vulkanContext.device, pipelines[i], nullptr);
+        vkDestroyPipelineLayout(vulkanContext.device, pipelineLayouts[i], nullptr);
+    }
 
     glfwDestroyWindow(window);
     glfwTerminate();

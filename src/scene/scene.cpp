@@ -22,25 +22,33 @@ void Scene::loadModel(const std::string& filepath, uint32_t postProcessFlags) {
 }
 
 void Scene::createDirectionalLight(glm::vec3 direction, glm::vec3 color, float intensity) {
-    sceneData.directionalLight.setDirection(direction);
-    sceneData.directionalLight.setColor(color);
-    sceneData.directionalLight.setIntensity(intensity);
+    directionalLight.setDirection(direction);
+    directionalLight.setColor(color);
+    directionalLight.setIntensity(intensity);
 }
 
 void Scene::addPointLight(glm::vec3 position, glm::vec3 color, float radius, float intensity) {
     pointLights.emplace_back(position, color, radius, intensity);
 }
 
+void Scene::updateSceneDescriptors(const VkDescriptorSetLayout& layout) {
+    for (auto& material : model->materials) {
+        if (material->textures[0].isActive()) {
+            material->updateDescriptorSets(layout);
+        }
+    }
+}
+
 void Scene::updateSceneBufferData() {
     //directionalLight.preprocess(bounds.center(), bounds.radius());
 
     vkw::RenderingDevice* rd = vkw::RenderingDevice::getSingleton();
-    if (sceneDataBuffer.expired()) {
-        sceneDataBuffer = rd->createBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(SceneData));
+    if (sceneDataBuffer == nullptr) {
+        sceneDataBuffer = (vkw::UniformBuffer*)rd->createBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(GpuSceneData));
     }
 
-    if (pointLightsBuffer.expired()) {
-        pointLightsBuffer = rd->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(PointLight) * pointLights.size());
+    if (pointLightsBuffer == nullptr) {
+        pointLightsBuffer = (vkw::StorageBuffer*)rd->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, sizeof(PointLight) * pointLights.size());
     }
 
     sceneData.projection = camera.getProjectionTransform();
@@ -51,13 +59,12 @@ void Scene::updateSceneBufferData() {
     sceneData.camNear = camera.near_plane;
     sceneData.camFar = camera.far_plane;
 
-    if (auto buffer = std::static_pointer_cast<vkw::UniformBuffer>(sceneDataBuffer.lock())) {
-        buffer->update(&sceneData);
-    }
+    sceneData.lightDirection = glm::vec4(directionalLight.getDirection(), 0.0);
+    sceneData.lightColor = glm::vec4(directionalLight.getColor(), 1.0);
+    sceneData.lightIntensity = directionalLight.getIntensity();
 
-    if (auto buffer = std::static_pointer_cast<vkw::StorageBuffer>(pointLightsBuffer.lock())) {
-        buffer->update(pointLights.data());
-    }
+    sceneDataBuffer->update(&sceneData);
+    pointLightsBuffer->update(pointLights.data());
 }
 
 void Scene::draw(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t renderFlags, uint32_t bindImageset) {

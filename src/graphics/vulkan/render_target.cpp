@@ -18,8 +18,6 @@ void RenderTarget::addColorAttachment(AttachmentInfo& attachment) {
     colorReferences.push_back(reference);
 
     VkAttachmentDescription description{
-        .format = attachment.texture->getFormat(),
-        .samples = attachment.texture->getSamples(),
         .loadOp = attachment.loadAction,
         .storeOp = attachment.storeAction,
         .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -27,6 +25,8 @@ void RenderTarget::addColorAttachment(AttachmentInfo& attachment) {
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
     };
+    description.format = attachment.texture->getFormat();
+    description.samples = attachment.texture->getSamples();
 
     descriptions.push_back(description);
 
@@ -71,8 +71,6 @@ void RenderTarget::setDepthStencilAttachment(AttachmentInfo& attachment) {
     depthStencilReference = reference;
 
     VkAttachmentDescription description{
-        .format = attachment.texture->getFormat(),
-        .samples = attachment.texture->getSamples(),
         .loadOp = attachment.loadAction,
         .storeOp = attachment.storeAction,
         .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -80,6 +78,9 @@ void RenderTarget::setDepthStencilAttachment(AttachmentInfo& attachment) {
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
     };
+    description.format = attachment.texture->getFormat();
+    description.samples = attachment.texture->getSamples();
+
     if (attachment.storeAction == VK_ATTACHMENT_STORE_OP_STORE && attachment.loadAction == VK_ATTACHMENT_LOAD_OP_CLEAR) {
         // are we writing to depth texture?
         description.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -125,15 +126,7 @@ void RenderTarget::setupFramebuffers(uint32_t count, VkExtent2D ext, VkRenderPas
 }
 
 void RenderTarget::destroy() {
-    while (!attachments.empty()) {
-        AttachmentInfo attachment = attachments.back();
-
-        if (!attachment.isSwapchainResource && !Texture::hasDepth(attachment.format)) {
-            delete attachment.texture;
-        }
-
-        attachments.pop_back();
-    }
+    attachments.clear();
 
     colorReferences.clear();
     resolveReferences.clear();

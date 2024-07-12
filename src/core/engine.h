@@ -4,13 +4,14 @@ namespace sublimation {
 
 class Engine {
 protected:
-    Engine() {}
+    Engine() = default;
 
 public:
     ~Engine() = default;
     static Engine* getSingleton();
 
     bool isValidationLayersEnabled() const { return useValidationLayers; }
+    Scene activeScene;
 
 private:
     bool useValidationLayers = true;

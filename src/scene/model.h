@@ -77,8 +77,8 @@ public:
     std::vector<Texture> textures;
     std::vector<std::unique_ptr<Material>> materials;
 
-    std::weak_ptr<vkw::Buffer> vertexBuffer;
-    std::weak_ptr<vkw::Buffer> indexBuffer;
+    vkw::Buffer* vertexBuffer;
+    vkw::Buffer* indexBuffer;
 
     std::string path;
 

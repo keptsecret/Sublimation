@@ -25,7 +25,7 @@ struct AttachmentInfo {
     VkAttachmentStoreOp storeAction = VK_ATTACHMENT_STORE_OP_STORE;
 
     bool isSwapchainResource;
-    Texture* texture = nullptr;
+    Texture* texture;
     Swapchain* swapchain = nullptr;
 };
 
@@ -40,7 +40,7 @@ public:
     void setupFramebuffers(uint32_t count, VkExtent2D extent, VkRenderPass renderPass);
     void destroy();
 
-    uint32_t getNumColorAttachments() const { return colorReferences.size(); }
+    uint32_t getNumColorAttachments() const { return static_cast<uint32_t>(colorReferences.size()); }
     bool getHasResolveAttachments() const { return hasResolveAttachments; }
     bool getHasDepthStencil() const { return hasDepthStencil; }
 
@@ -48,7 +48,7 @@ public:
     const VkAttachmentReference* getResolveAttachmentReferences() const { return hasResolveAttachments ? resolveReferences.data() : nullptr; }
     const VkAttachmentReference* getDepthStencilReference() const { return hasDepthStencil ? &depthStencilReference : nullptr; }
 
-    uint32_t getNumAttachmentDescriptions() const { return descriptions.size(); }
+    uint32_t getNumAttachmentDescriptions() const { return static_cast<uint32_t>(descriptions.size()); }
     const VkAttachmentDescription* getAttachmentDescriptions() const { return descriptions.data(); }
 
     const VkFramebuffer& getFramebuffer(int index) const { return framebuffers[index]; }

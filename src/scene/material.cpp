@@ -17,7 +17,7 @@ void Material::apply() {
         glm::vec4{ metallicRoughnessOcclusionFactor.y }, glm::vec4{ metallicRoughnessOcclusionFactor.z }, glm::vec4{ 0 } };
 
     for (size_t i = 0; i < 5; i++) {
-        if (textures[i].isActive()) {
+        if (!textures[i].isActive()) {
             textures[i].constant = values[i];
 
             textures[i].texture = rd->createTexture(vkw::TEXTURE_2D, { 1, 1 },
@@ -36,20 +36,26 @@ void Material::apply() {
     auxUbo.update(&aux);
 }
 
-void Material::updateDescriptors() {
-    VkDevice device = vkw::RenderingDevice::getSingleton()->getDevice();
+void Material::updateDescriptorSets(const VkDescriptorSetLayout& layout) {
+    vkw::RenderingDevice* rd = vkw::RenderingDevice::getSingleton();
 
-    vkw::DescriptorBuilder builder;
+    // if descriptor not allocated, do that first
+    if (descriptorSet == VK_NULL_HANDLE) {
+        vkw::DescriptorAllocator allocator = rd->getDescriptorAllocator();
 
-    builder.addUniformBuffer<MaterialAux>(auxUbo, 0, VK_SHADER_STAGE_ALL);
-
-    for (size_t i = 0; i < 5; i++) {
-        if (auto tex = textures[i].texture.lock()) {
-            builder.addCombinedImageSampler(*tex, i + 1, VK_SHADER_STAGE_ALL);
-        }
+        descriptorSet = allocator.allocate(layout);
     }
+    
+    // write descriptors
+    {
+        vkw::DescriptorWriter writer;
 
-    descriptorSet = builder.build("mat1");
+        writer.bindBuffer(0, &auxUbo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        for (uint32_t i = 0; i < textures.size(); i++) {
+            writer.bindImage(i + 1, textures[i].texture, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        }
+        writer.writeSet(descriptorSet);
+    }
 }
 
 } //namespace sublimation

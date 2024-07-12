@@ -10,152 +10,179 @@ namespace sublimation {
 
 namespace vkw {
 
-Descriptor::Descriptor(std::string&& name, std::vector<VkDescriptorSetLayoutBinding>&& layoutBindings, std::vector<VkWriteDescriptorSet>&& writeSets) :
-        name(name), descriptorLayoutBindings(layoutBindings), writeDescriptorSets(writeSets) {
-    for (size_t i = 0; i < layoutBindings.size(); i++) {
-        if (layoutBindings[i].descriptorType != writeSets[i].descriptorType) {
-            std::cerr << "VkDescriptorType mismatch for descriptor set " << name << "\n";
-        }
-    }
-
-    const VkDevice device = RenderingDevice::getSingleton()->getDevice();
-
+VkDescriptorSetLayout DescriptorLayoutBuilder::build(std::string name) {
     VkDescriptorSetLayoutCreateInfo layoutCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .bindingCount = static_cast<uint32_t>(layoutBindings.size()),
         .pBindings = layoutBindings.data()
     };
 
-    CHECK_VKRESULT(vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &descriptorSetLayout));
+    VkDescriptorSetLayout descriptorSetLayout;
+    CHECK_VKRESULT(vkCreateDescriptorSetLayout(RenderingDevice::getSingleton()->getDevice(), &layoutCreateInfo, nullptr, &descriptorSetLayout));
+    layoutBindings.clear();
 
-    std::unordered_map<VkDescriptorType, uint32_t> descriptorTypes;
-    for (const auto& binding : layoutBindings) {
-        descriptorTypes[binding.descriptorType]++;
+    return descriptorSetLayout;
+}
+
+DescriptorLayoutBuilder& DescriptorLayoutBuilder::addResource(VkDescriptorType type, const uint32_t binding, const VkShaderStageFlagBits stage) {
+    layoutBindings.push_back({ .binding = binding,
+            .descriptorType = type,
+            .descriptorCount = 1,
+            .stageFlags = static_cast<VkShaderStageFlags>(stage),
+            .pImmutableSamplers = nullptr });
+
+    return *this;
+}
+
+void DescriptorAllocator::initialize(uint32_t initialSets, std::span<PoolSizeRatio> poolRatios) {
+    ratios.clear();
+
+    for (auto r : poolRatios) {
+        ratios.push_back(r);
     }
 
-    std::vector<VkDescriptorPoolSize> poolSizes;
-    poolSizes.reserve(descriptorTypes.size());
+    VkDescriptorPool pool = createPool(initialSets, poolRatios);
+    setsPerPool = initialSets * 1.5f;
+    readyPools.push_back(pool);
+}
 
-    for (const auto& type : descriptorTypes) {
-        poolSizes.push_back({ type.first, type.second });
+void DescriptorAllocator::clearPools() {
+    VkDevice device = RenderingDevice::getSingleton()->getDevice();
+
+    for (auto pool : readyPools) {
+        vkResetDescriptorPool(device, pool, 0);
+    }
+    for (auto pool : fullPools) {
+        vkResetDescriptorPool(device, pool, 0);
+        readyPools.push_back(pool);
+    }
+    fullPools.clear();
+}
+
+void DescriptorAllocator::destroyPools() {
+    VkDevice device = RenderingDevice::getSingleton()->getDevice();
+
+    for (auto pool : readyPools) {
+        vkDestroyDescriptorPool(device, pool, nullptr);
+    }
+    readyPools.clear();
+    for (auto pool : fullPools) {
+        vkDestroyDescriptorPool(device, pool, nullptr);
+    }
+    fullPools.clear();
+}
+
+VkDescriptorSet DescriptorAllocator::allocate(VkDescriptorSetLayout layout, void* pNext) {
+    VkDescriptorPool pool = getPool();
+
+    VkDescriptorSetAllocateInfo allocInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .pNext = pNext,
+        .descriptorPool = pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &layout
+    };
+
+    VkDescriptorSet descriptorSet;
+    VkDevice device = RenderingDevice::getSingleton()->getDevice();
+    VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
+
+    // pool is full, allocate new
+    if (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
+        fullPools.push_back(pool);
+
+        pool = getPool();
+        allocInfo.descriptorPool = pool;
+
+        CHECK_VKRESULT(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet));
+    }
+
+    readyPools.push_back(pool);
+    return descriptorSet;
+}
+
+VkDescriptorPool DescriptorAllocator::getPool() {
+    VkDescriptorPool pool;
+    if (readyPools.size() != 0) {
+        pool = readyPools.back();
+        readyPools.pop_back();
+    } else {
+        pool = createPool(setsPerPool, ratios);
+
+        setsPerPool = setsPerPool * 1.5f;
+        if (setsPerPool > 4092)
+            setsPerPool = 4092;
+    }
+
+    return pool;
+}
+
+VkDescriptorPool DescriptorAllocator::createPool(uint32_t setCount, std::span<PoolSizeRatio> poolRatios) {
+    std::vector<VkDescriptorPoolSize> poolSizes;
+    for (PoolSizeRatio& ratio : poolRatios) {
+        poolSizes.push_back({ .type = ratio.type, .descriptorCount = uint32_t(ratio.ratio * setCount) });
     }
 
     VkDescriptorPoolCreateInfo poolCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = 16, // TODO: temporary value, hope we don't have more than 16 descriptor sets per pool
-        .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+        .maxSets = setCount,
+        .poolSizeCount = poolSizes.size(),
         .pPoolSizes = poolSizes.data()
     };
 
-    CHECK_VKRESULT(vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &descriptorPool));
+    VkDescriptorPool pool;
+    CHECK_VKRESULT(vkCreateDescriptorPool(RenderingDevice::getSingleton()->getDevice(), &poolCreateInfo, nullptr, &pool));
+}
 
-    VkDescriptorSetAllocateInfo allocateInfo{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = descriptorPool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &descriptorSetLayout
+void DescriptorWriter::bindImage(uint32_t binding, Texture* texture, VkDescriptorType type) {
+    VkDescriptorImageInfo& info = imageInfos.emplace_back(VkDescriptorImageInfo{
+            .sampler = texture->getSampler(),
+            .imageView = texture->getImageView(),
+            .imageLayout = texture->getLayout() });
+
+    VkWriteDescriptorSet write{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = VK_NULL_HANDLE,
+        .dstBinding = binding,
+        .descriptorCount = 1,
+        .descriptorType = type,
+        .pImageInfo = &info
     };
 
-    descriptorSets.resize(1);
-    CHECK_VKRESULT(vkAllocateDescriptorSets(device, &allocateInfo, descriptorSets.data()));
+    descriptorWrites.push_back(write);
+}
 
-    for (uint32_t i = 0; i < writeSets.size(); i++) {
-        writeSets[i].dstBinding = i;
-        writeSets[i].dstSet = descriptorSets[0];
+void DescriptorWriter::bindBuffer(uint32_t binding, Buffer* buffer, VkDescriptorType type) {
+    VkDescriptorBufferInfo& info = bufferInfos.emplace_back(VkDescriptorBufferInfo{
+            .buffer = buffer->getBuffer(),
+            .offset = 0,
+            .range = buffer->getSize() });
+
+    VkWriteDescriptorSet write{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = VK_NULL_HANDLE,
+        .dstBinding = binding,
+        .descriptorCount = 1,
+        .descriptorType = type,
+        .pBufferInfo = &info
+    };
+
+    descriptorWrites.push_back(write);
+}
+
+void DescriptorWriter::writeSet(VkDescriptorSet descriptorSet)
+{
+    for (auto& write : descriptorWrites) {
+        write.dstSet = descriptorSet;
     }
 
-    vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+    vkUpdateDescriptorSets(RenderingDevice::getSingleton()->getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+
+    imageInfos.clear();
+    bufferInfos.clear();
+    descriptorWrites.clear();
 }
 
-Descriptor::Descriptor(Descriptor&& other) noexcept {
-    name = std::move(other.name);
-    descriptorPool = std::exchange(other.descriptorPool, nullptr);
-    descriptorSetLayout = std::exchange(other.descriptorSetLayout,  nullptr);
-    descriptorLayoutBindings = std::move(other.descriptorLayoutBindings);
-    writeDescriptorSets = std::move(other.writeDescriptorSets);
-    descriptorSets = std::move(other.descriptorSets);
-}
-
-Descriptor::~Descriptor() {
-    const VkDevice device = RenderingDevice::getSingleton()->getDevice();
-    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-}
-
-Descriptor DescriptorBuilder::build(std::string name) {
-    Descriptor newDescriptor(std::move(name), std::move(layoutBindings), std::move(writeDescriptorSets));
-
-    descriptorBufferInfos.clear();
-    descriptorImageInfos.clear();
-
-    return std::move(newDescriptor);
-}
-
-template <typename T>
-DescriptorBuilder& DescriptorBuilder::addUniformBuffer(UniformBuffer& buffer, const uint32_t binding, const VkShaderStageFlagBits stage) {
-    layoutBindings.push_back({ .binding = binding,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = static_cast<VkShaderStageFlags>(stage),
-            .pImmutableSamplers = nullptr });
-
-    descriptorBufferInfos.push_back({ .buffer = buffer.getBuffer(),
-            .offset = 0,
-            .range = sizeof(T) });
-
-    writeDescriptorSets.push_back({ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding = binding,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &descriptorBufferInfos.back() });
-
-    return *this;
-}
-
-template <typename T>
-DescriptorBuilder& DescriptorBuilder::addStorageBuffer(StorageBuffer& buffer, const uint32_t binding, const VkShaderStageFlagBits stage) {
-    layoutBindings.push_back({ .binding = binding,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = static_cast<VkShaderStageFlags>(stage),
-            .pImmutableSamplers = nullptr });
-
-    descriptorBufferInfos.push_back({ .buffer = buffer.getBuffer(),
-            .offset = 0,
-            .range = sizeof(T) });
-
-    writeDescriptorSets.push_back({ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding = binding,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &descriptorBufferInfos.back() });
-
-    return *this;
-}
-
-template <typename T>
-DescriptorBuilder& DescriptorBuilder::addCombinedImageSampler(Texture& texture, const uint32_t binding, const VkShaderStageFlagBits stage) {
-    layoutBindings.push_back({ .binding = binding,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = 1,
-            .stageFlags = static_cast<VkShaderStageFlags>(stage),
-            .pImmutableSamplers = nullptr });
-
-    descriptorImageInfos.push_back({ .sampler = texture.getSampler(),
-            .imageView = texture.getImageView(),
-            .imageLayout = texture.getLayout() });
-
-    writeDescriptorSets.push_back({ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding = binding,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &descriptorImageInfos.back() });
-
-    return *this;
-}
 } //namespace vkw
 
 } //namespace sublimation

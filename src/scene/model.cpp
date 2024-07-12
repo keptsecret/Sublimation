@@ -130,9 +130,7 @@ void Model::loadFromAiScene(const aiScene* scene, const std::string& filepath) {
         VkBufferCopy copyRegion{
             .size = vertexBufferSize
         };
-        if (auto buffer = vertexBuffer.lock()) {
-            vkCmdCopyBuffer(commandBuffer, vertexStagingBuffer.getBuffer(), buffer->getBuffer(), 1, &copyRegion);
-        }
+        vkCmdCopyBuffer(commandBuffer, vertexStagingBuffer.getBuffer(), vertexBuffer->getBuffer(), 1, &copyRegion);
 
         rd->commandBufferSubmitIdle(&commandBuffer, VK_QUEUE_GRAPHICS_BIT);
     }
@@ -149,20 +147,12 @@ void Model::loadFromAiScene(const aiScene* scene, const std::string& filepath) {
         VkBufferCopy copyRegion{
             .size = indexBufferSize
         };
-        if (auto buffer = indexBuffer.lock()) {
-            vkCmdCopyBuffer(commandBuffer, indexStagingBuffer.getBuffer(), buffer->getBuffer(), 1, &copyRegion);
-        }
+        vkCmdCopyBuffer(commandBuffer, indexStagingBuffer.getBuffer(), indexBuffer->getBuffer(), 1, &copyRegion);
 
         rd->commandBufferSubmitIdle(&commandBuffer, VK_QUEUE_GRAPHICS_BIT);
     }
 
     //updateModelBounds();
-
-    for (auto& material : materials) {
-        if (material->textures[0].isActive()) {
-            material->updateDescriptors();
-        }
-    }
 }
 
 void Model::loadMaterials(const aiScene* scene) {
@@ -374,12 +364,8 @@ std::unique_ptr<Mesh> Model::processMesh(aiMesh* mesh, const aiScene* scene, glm
 
 void Model::draw(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t renderFlags, uint32_t bindImageset) {
     const VkDeviceSize offsets[1] = { 0 };
-    if (auto buffer = vertexBuffer.lock()) {
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &buffer->getBuffer(), offsets);
-    }
-    if (auto buffer = indexBuffer.lock()) {
-        vkCmdBindIndexBuffer(commandBuffer, buffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
-    }
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer->getBuffer(), offsets);
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
     for (auto& node : nodes) {
         drawNode(node, commandBuffer, pipelineLayout, renderFlags, bindImageset);

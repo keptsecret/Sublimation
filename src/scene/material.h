@@ -11,12 +11,12 @@
 namespace sublimation {
 
 struct Texture {
-    std::weak_ptr<vkw::Texture> texture;
+    vkw::Texture* texture = nullptr;
 
     std::string filepath;
     glm::vec4 constant{0, 0, 0, -1};
 
-    bool isActive() const { return texture.expired(); }
+    bool isActive() const { return texture != nullptr; }
     bool isConstantValue() const { return constant.w < 0.f; }
 };
 
@@ -40,8 +40,8 @@ public:
 
     void apply();
 
-    vkw::Descriptor descriptorSet;
-    void updateDescriptors();
+    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    void updateDescriptorSets(const VkDescriptorSetLayout& layout);
 };
 
 } //namespace sublimation

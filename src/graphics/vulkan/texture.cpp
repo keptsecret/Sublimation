@@ -6,6 +6,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
+#include <graphics/render_system.h> // TODO: ???
+
 namespace sublimation {
 
 namespace vkw {
@@ -94,8 +96,7 @@ void Texture::generateMipmaps(VkImage const& image, const VkExtent3D& extent, Vk
 
     assert(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT);
 
-    VkCommandBuffer commandBuffer;
-    CHECK_VKRESULT(rd->createCommandBuffer(&commandBuffer, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true));
+    VkCommandBuffer commandBuffer = rd->getCommandBuffer(RenderSystem::getSingleton()->getFrameIndex());
 
     VkImageMemoryBarrier barrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -158,8 +159,7 @@ void Texture::generateMipmaps(VkImage const& image, const VkExtent3D& extent, Vk
 void Texture::transitionImageLayout(const VkImage& img, VkFormat format, VkImageLayout srcLayout, VkImageLayout dstLayout,
         VkImageAspectFlags imageAspect, uint32_t mipLevels, uint32_t baseMipLevel, uint32_t layerCount, uint32_t baseArrayLayer) {
     RenderingDevice* rd = RenderingDevice::getSingleton();
-    VkCommandBuffer commandBuffer;
-    CHECK_VKRESULT(rd->createCommandBuffer(&commandBuffer, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true));
+    VkCommandBuffer commandBuffer = rd->getCommandBuffer(RenderSystem::getSingleton()->getFrameIndex());
 
     VkImageMemoryBarrier barrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -213,8 +213,7 @@ void Texture::transitionImageLayout(const VkImage& img, VkFormat format, VkImage
 
 void Texture::copyBufferToImage(const VkBuffer& buffer, const VkImage& img, const VkExtent3D& extent, uint32_t layerCount, uint32_t baseArrayLayer) {
     RenderingDevice* rd = RenderingDevice::getSingleton();
-    VkCommandBuffer commandBuffer;
-    CHECK_VKRESULT(rd->createCommandBuffer(&commandBuffer, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true));
+    VkCommandBuffer commandBuffer = rd->getCommandBuffer(RenderSystem::getSingleton()->getFrameIndex());
 
     VkBufferImageCopy copyRegion{
         .bufferOffset = 0,
